@@ -11,7 +11,8 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-
+import Demo from './src/components/demo';
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
@@ -27,12 +28,11 @@ function AppContent() {
   const safeAreaInsets = useSafeAreaInsets();
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
+      <Demo></Demo>
     </View>
+    </GestureHandlerRootView>
   );
 }
 
