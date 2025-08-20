@@ -1,65 +1,84 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
   withSpring,
-  runOnJS 
+  runOnJS,
 } from 'react-native-reanimated';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const DRAG_IMAGES = [
+// Define interfaces for types
+interface DragImage {
+  id: number;
+  color: string;
+  label: string;
+}
+
+interface DroppedItem extends DragImage {
+  x: number;
+  y: number;
+  droppedId: number;
+}
+
+interface Layout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const DRAG_IMAGES: DragImage[] = [
   { id: 1, color: '#FF6B6B', label: 'Ảnh 1' },
   { id: 2, color: '#4ECDC4', label: 'Ảnh 2' },
   { id: 3, color: '#45B7D1', label: 'Ảnh 3' },
   { id: 4, color: '#96CEB4', label: 'Ảnh 4' },
 ];
 
-const DragDropZoomPanCanvas = () => {
-  const [draggedImages] = useState(DRAG_IMAGES);
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [droppedItems, setDroppedItems] = useState([]);
-  const [dropZoneLayout, setDropZoneLayout] = useState(null);
-  const [dragAreaLayout, setDragAreaLayout] = useState(null);
-  const [isDragging, setIsDragging] = useState(-1);
-  const [itemScales, setItemScales] = useState({});
-  const [draggingDroppedItem, setDraggingDroppedItem] = useState(null);
-  
-  // Trạng thái Edit Mode
-  const [isEditMode, setIsEditMode] = useState(false);
+const DragDropZoomPanCanvas: React.FC = () => {
+  const [draggedImages] = useState<DragImage[]>(DRAG_IMAGES);
+  const [selectedItem, setSelectedItem] = useState<DroppedItem | null>(null);
+  const [droppedItems, setDroppedItems] = useState<DroppedItem[]>([]);
+  const [dropZoneLayout, setDropZoneLayout] = useState<Layout | null>(null);
+  const [dragAreaLayout, setDragAreaLayout] = useState<Layout | null>(null);
+  const [isDragging, setIsDragging] = useState<number>(-1);
+  const [itemScales, setItemScales] = useState<Record<number, number>>({});
+  const [draggingDroppedItem, setDraggingDroppedItem] = useState<number | null>(null);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const panOffsetX = useSharedValue(0);
-  const panOffsetY = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const scaleOffset = useSharedValue(1);
+  // Animated shared values
+  const translateX = useSharedValue<number>(0);
+  const translateY = useSharedValue<number>(0);
+  const panOffsetX = useSharedValue<number>(0);
+  const panOffsetY = useSharedValue<number>(0);
+  const scale = useSharedValue<number>(1);
+  const scaleOffset = useSharedValue<number>(1);
 
-  const dragTranslationX = draggedImages.map(() => useSharedValue(0));
-  const dragTranslationY = draggedImages.map(() => useSharedValue(0));
-  const dragScale = draggedImages.map(() => useSharedValue(1));
+  const dragTranslationX = draggedImages.map(() => useSharedValue<number>(0));
+  const dragTranslationY = draggedImages.map(() => useSharedValue<number>(0));
+  const dragScale = draggedImages.map(() => useSharedValue<number>(1));
 
-  // Shared values để lưu vị trí ban đầu khi bắt đầu kéo
-  const itemStartPositions = useRef({});
+  // Ref to store initial positions of dropped items
+  const itemStartPositions = useRef<Record<number, { x: number; y: number }>>({});
 
-  const adjustItemSize = (droppedId, increase) => {
-    setItemScales(prev => {
+  const adjustItemSize = (droppedId: number, increase: boolean): void => {
+    setItemScales((prev) => {
       const currentScale = prev[droppedId] || 1;
-      const newScale = increase 
+      const newScale = increase
         ? Math.min(currentScale + 0.1, 3)
         : Math.max(currentScale - 0.1, 0.5);
       return { ...prev, [droppedId]: newScale };
     });
   };
 
-  const toggleEditMode = () => {
-    setIsEditMode(!isEditMode);
+  const toggleEditMode = (): void => {
+    setIsEditMode((prev) => !prev);
     setSelectedItem(null);
   };
 
-  // Canvas pan gesture - bị disable khi edit mode
+  // Canvas pan gesture
   const canvasPanGesture = Gesture.Pan()
     .enabled(isDragging === -1 && !isEditMode && !draggingDroppedItem)
     .onUpdate((e) => {
@@ -71,7 +90,7 @@ const DragDropZoomPanCanvas = () => {
       panOffsetY.value = translateY.value;
     });
 
-  // Canvas pinch gesture - bị disable khi edit mode
+  // Canvas pinch gesture
   const canvasPinchGesture = Gesture.Pinch()
     .enabled(isDragging === -1 && !isEditMode && !draggingDroppedItem)
     .onUpdate((e) => {
@@ -91,8 +110,8 @@ const DragDropZoomPanCanvas = () => {
     ],
   }));
 
-  // Gesture cho drag items từ sidebar - bị disable khi edit mode
-  const createPanGesture = (index) => {
+  // Gesture for dragging items from sidebar
+  const createPanGesture = (index: number) => {
     return Gesture.Pan()
       .enabled(!isEditMode)
       .onStart(() => {
@@ -106,12 +125,12 @@ const DragDropZoomPanCanvas = () => {
       .onEnd((event) => {
         dragScale[index].value = withSpring(1);
         runOnJS(setIsDragging)(-1);
-        
+
         if (dropZoneLayout && dragAreaLayout) {
-          const draggedItemX = dragAreaLayout.x + 20 + (index * 80) + event.translationX;
+          const draggedItemX = dragAreaLayout.x + 20 + index * 80 + event.translationX;
           const draggedItemY = dragAreaLayout.y + 80 + event.translationY;
-          
-          const isInDropZone = 
+
+          const isInDropZone =
             draggedItemX >= dropZoneLayout.x &&
             draggedItemX + 70 <= dropZoneLayout.x + dropZoneLayout.width &&
             draggedItemY >= dropZoneLayout.y &&
@@ -125,7 +144,7 @@ const DragDropZoomPanCanvas = () => {
             const actualCanvasY = (canvasContainerY - translateY.value) / scale.value;
             const centeredX = actualCanvasX - 35;
             const centeredY = actualCanvasY - 35;
-            
+
             runOnJS(handleDropSuccess)(index, centeredX, centeredY);
           } else {
             dragTranslationX[index].value = withSpring(0);
@@ -138,47 +157,45 @@ const DragDropZoomPanCanvas = () => {
       });
   };
 
-  const handleDropSuccess = (index, x, y) => {
-    const newItem = {
+  const handleDropSuccess = (index: number, x: number, y: number): void => {
+    const newItem: DroppedItem = {
       ...draggedImages[index],
       x: Math.max(0, Math.min(x, 1930)),
       y: Math.max(0, Math.min(y, 1930)),
       droppedId: Date.now() + index + Math.random(),
     };
-    
-    setDroppedItems(prev => [...prev, newItem]);
-    setItemScales(prev => ({ ...prev, [newItem.droppedId]: 1 }));
-    
+
+    setDroppedItems((prev) => [...prev, newItem]);
+    setItemScales((prev) => ({ ...prev, [newItem.droppedId]: 1 }));
+
     dragTranslationX[index].value = withSpring(0);
     dragTranslationY[index].value = withSpring(0);
   };
 
-  const updateItemPosition = (droppedId, newX, newY) => {
-    setDroppedItems(prev => 
-      prev.map(item => 
-        item.droppedId === droppedId 
-          ? { ...item, x: newX, y: newY }
-          : item
+  const updateItemPosition = (droppedId: number, newX: number, newY: number): void => {
+    setDroppedItems((prev) =>
+      prev.map((item) =>
+        item.droppedId === droppedId ? { ...item, x: newX, y: newY } : item
       )
     );
   };
 
-  const removeDrop = (droppedId) => {
-    setDroppedItems(prev => prev.filter(item => item.droppedId !== droppedId));
-    setItemScales(prev => {
+  const removeDrop = (droppedId: number): void => {
+    setDroppedItems((prev) => prev.filter((item) => item.droppedId !== droppedId));
+    setItemScales((prev) => {
       const newScales = { ...prev };
       delete newScales[droppedId];
       return newScales;
     });
   };
 
-  const clearAll = () => {
+  const clearAll = (): void => {
     setDroppedItems([]);
     setItemScales({});
     setSelectedItem(null);
   };
 
-  const resetCanvasTransform = () => {
+  const resetCanvasTransform = (): void => {
     translateX.value = withSpring(0);
     translateY.value = withSpring(0);
     panOffsetX.value = 0;
@@ -187,62 +204,59 @@ const DragDropZoomPanCanvas = () => {
     scaleOffset.value = 1;
   };
 
-  const createDragAnimatedStyle = (index) => useAnimatedStyle(() => ({
-    transform: [
-      { translateX: dragTranslationX[index].value },
-      { translateY: dragTranslationY[index].value },
-      { scale: dragScale[index].value },
-    ],
-    zIndex: isDragging === index ? 9999 : 1,
-    elevation: isDragging === index ? 10 : 4,
-  }));
+  const createDragAnimatedStyle = (index: number) =>
+    useAnimatedStyle(() => ({
+      transform: [
+        { translateX: dragTranslationX[index].value },
+        { translateY: dragTranslationY[index].value },
+        { scale: dragScale[index].value },
+      ],
+      zIndex: isDragging === index ? 9999 : 1,
+      elevation: isDragging === index ? 10 : 4,
+    }));
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Kéo thả + Zoom/Pan Canvas (Edit Mode)</Text>
-      
+
       <View style={styles.debugInfo}>
         <Text style={styles.debugText}>
-          🔍 Zoom: {scale.value.toFixed(2)}x | Pan: ({translateX.value.toFixed(0)}, {translateY.value.toFixed(0)})
+          🔍 Zoom: {scale.value.toFixed(2)}x | Pan: ({translateX.value.toFixed(0)},{' '}
+          {translateY.value.toFixed(0)})
         </Text>
         <Text style={[styles.debugText, { marginTop: 4 }]}>
           {isEditMode ? '✏️ Chế độ Edit: Chỉ kéo thả item trên canvas' : '🔧 Chế độ Normal: Zoom/Pan/Add items'}
         </Text>
       </View>
-      
-      <View 
+
+      <View
         style={[
-          styles.dragArea, 
+          styles.dragArea,
           isDragging >= 0 && styles.dragAreaActive,
-          isEditMode && styles.dragAreaDisabled
+          isEditMode && styles.dragAreaDisabled,
         ]}
-        onLayout={(event) => {
+        onLayout={(event: LayoutChangeEvent) => {
           const { x, y, width, height } = event.nativeEvent.layout;
           setDragAreaLayout({ x, y, width, height });
         }}
       >
         <View style={styles.dragHeader}>
-          <Text style={styles.sectionTitle}>
-            📋 Kéo từ đây: {isEditMode ? '(Bị khóa)' : ''}
-          </Text>
+          <Text style={styles.sectionTitle}>📋 Kéo từ đây: {isEditMode ? '(Bị khóa)' : ''}</Text>
           {isDragging >= 0 && (
-            <Text style={styles.draggingIndicator}>
-              🔄 Đang kéo {draggedImages[isDragging].label}
-            </Text>
+            <Text style={styles.draggingIndicator}>🔄 Đang kéo {draggedImages[isDragging].label}</Text>
           )}
         </View>
         <View style={styles.dragItemsContainer}>
           {draggedImages.map((item, index) => (
-            <GestureDetector 
-              key={item.id} 
-              gesture={createPanGesture(index)}
-            >
-              <Animated.View style={[
-                styles.dragItem,
-                { backgroundColor: item.color },
-                createDragAnimatedStyle(index),
-                isEditMode && styles.dragItemDisabled
-              ]}>
+            <GestureDetector key={item.id} gesture={createPanGesture(index)}>
+              <Animated.View
+                style={[
+                  styles.dragItem,
+                  { backgroundColor: item.color },
+                  createDragAnimatedStyle(index),
+                  isEditMode && styles.dragItemDisabled,
+                ]}
+              >
                 <Text style={styles.dragItemText}>{item.label}</Text>
               </Animated.View>
             </GestureDetector>
@@ -250,44 +264,38 @@ const DragDropZoomPanCanvas = () => {
         </View>
       </View>
 
-      <View 
+      <View
         style={[
-          styles.dropZone, 
+          styles.dropZone,
           isDragging >= 0 && styles.dropZoneActive,
-          isEditMode && styles.dropZoneEditMode
+          isEditMode && styles.dropZoneEditMode,
         ]}
-        onLayout={(event) => {
+        onLayout={(event: LayoutChangeEvent) => {
           const { x, y, width, height } = event.nativeEvent.layout;
           setDropZoneLayout({ x, y, width, height });
         }}
       >
         <View style={styles.canvasHeader}>
           <View style={styles.controlButtons}>
-            <Text 
+            <Text
               style={[styles.editButton, isEditMode && styles.editButtonActive]}
               onPress={toggleEditMode}
             >
               {isEditMode ? '📝 Thoát Edit' : '✏️ Edit'}
             </Text>
             {!isEditMode && (
-              <Text 
-                style={styles.controlButton}
-                onPress={resetCanvasTransform}
-              >
+              <Text style={styles.controlButton} onPress={resetCanvasTransform}>
                 🔄 Reset
               </Text>
             )}
             {droppedItems.length > 0 && (
-              <Text 
-                style={styles.clearButton}
-                onPress={clearAll}
-              >
+              <Text style={styles.clearButton} onPress={clearAll}>
                 🗑️ Xóa tất cả
               </Text>
             )}
             {selectedItem && isEditMode && (
               <>
-                <Text 
+                <Text
                   style={styles.clearButton}
                   onPress={() => {
                     removeDrop(selectedItem.droppedId);
@@ -296,13 +304,13 @@ const DragDropZoomPanCanvas = () => {
                 >
                   🗑️ Xóa
                 </Text>
-                <Text 
+                <Text
                   style={styles.controlButton}
                   onPress={() => adjustItemSize(selectedItem.droppedId, true)}
                 >
                   ➕
                 </Text>
-                <Text 
+                <Text
                   style={styles.controlButton}
                   onPress={() => adjustItemSize(selectedItem.droppedId, false)}
                 >
@@ -312,17 +320,19 @@ const DragDropZoomPanCanvas = () => {
             )}
           </View>
         </View>
-        
-        <View style={[
-          styles.canvasContainer, 
-          isDragging >= 0 && styles.canvasContainerActive,
-          isEditMode && styles.canvasContainerEditMode
-        ]}>
+
+        <View
+          style={[
+            styles.canvasContainer,
+            isDragging >= 0 && styles.canvasContainerActive,
+            isEditMode && styles.canvasContainerEditMode,
+          ]}
+        >
           <GestureDetector gesture={canvasComposedGesture}>
             <Animated.View style={[styles.canvas, canvasAnimatedStyle]}>
               <View style={styles.canvasContent}>
                 <View style={styles.gridPattern} />
-                
+
                 {isDragging >= 0 && !isEditMode && (
                   <View style={styles.dropIndicator}>
                     <Text style={styles.dropIndicatorText}>
@@ -330,18 +340,16 @@ const DragDropZoomPanCanvas = () => {
                     </Text>
                   </View>
                 )}
-                
+
                 {droppedItems.map((item) => {
                   const droppedItemGesture = Gesture.Pan()
                     .enabled(isEditMode)
                     .onStart(() => {
-                      // Lưu vị trí ban đầu khi bắt đầu kéo
                       itemStartPositions.current[item.droppedId] = { x: item.x, y: item.y };
                       runOnJS(setDraggingDroppedItem)(item.droppedId);
                       runOnJS(setSelectedItem)(item);
                     })
                     .onUpdate((event) => {
-                      // Sử dụng vị trí ban đầu đã lưu + translation để tính vị trí mới
                       const startPos = itemStartPositions.current[item.droppedId];
                       if (startPos) {
                         const newX = Math.max(0, Math.min(startPos.x + event.translationX / scale.value, 1930));
@@ -349,12 +357,11 @@ const DragDropZoomPanCanvas = () => {
                         runOnJS(updateItemPosition)(item.droppedId, newX, newY);
                       }
                     })
-                    .onEnd((event) => {
+                    .onEnd(() => {
                       runOnJS(setDraggingDroppedItem)(null);
-                      // Xóa vị trí ban đầu đã lưu
                       delete itemStartPositions.current[item.droppedId];
                     });
-                  
+
                   return (
                     <GestureDetector key={item.droppedId} gesture={droppedItemGesture}>
                       <Animated.View
@@ -367,8 +374,7 @@ const DragDropZoomPanCanvas = () => {
                             transform: [{ scale: itemScales[item.droppedId] || 1 }],
                           },
                           isEditMode && selectedItem?.droppedId === item.droppedId && styles.selectedDroppedItem,
-                          // isEditMode && styles.droppedItemEditMode,
-                          draggingDroppedItem === item.droppedId && { zIndex: 9999, elevation: 10 }
+                          draggingDroppedItem === item.droppedId && { zIndex: 9999, elevation: 10 },
                         ]}
                         onTouchEnd={() => isEditMode && setSelectedItem(item)}
                       >
@@ -385,14 +391,13 @@ const DragDropZoomPanCanvas = () => {
                     </GestureDetector>
                   );
                 })}
-                
+
                 {droppedItems.length === 0 && isDragging === -1 && (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyText}>
-                      {isEditMode 
+                      {isEditMode
                         ? '✏️ Chế độ Edit\n🖼️ Kéo thả ảnh đã thả để di chuyển\n📝 Thoát Edit để zoom/pan'
-                        : '🖼️ Kéo ảnh vào đây\n📌 Pinch để zoom\n✋ Pan để di chuyển\n👆 Tap ảnh để chọn/xóa\n➕➖ Chọn để phóng to/thu nhỏ'
-                      }
+                        : '🖼️ Kéo ảnh vào đây\n📌 Pinch để zoom\n✋ Pan để di chuyển\n👆 Tap ảnh để chọn/xóa\n➕➖ Chọn để phóng to/thu nhỏ'}
                     </Text>
                   </View>
                 )}
@@ -400,11 +405,10 @@ const DragDropZoomPanCanvas = () => {
             </Animated.View>
           </GestureDetector>
         </View>
-        
+
         {droppedItems.length > 0 && (
           <Text style={styles.stats}>
-            📊 {droppedItems.length} ảnh đã thả
-            {isEditMode && ' - Chế độ Edit: Kéo để di chuyển'}
+            📊 {droppedItems.length} ảnh đã thả{isEditMode && ' - Chế độ Edit: Kéo để di chuyển'}
           </Text>
         )}
       </View>
@@ -615,11 +619,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // droppedItemEditMode: {
-  //   borderWidth: 2,
-  //   borderColor: '#ed8936',
-  //   borderStyle: 'dashed',
-  // },
   droppedItemText: {
     color: 'white',
     fontWeight: 'bold',
