@@ -7,6 +7,9 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from './RootStackParamList ';
+import { useNavigation } from '@react-navigation/native';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -55,8 +58,10 @@ const BACKGROUND_OPTIONS: BackgroundOption[] = [
   { id: 'ocean', name: 'Đại dương', type: 'gradient', value: ['#a8edea', '#fed6e3'], preview: '#a8edea' },
   { id: 'sky', name: 'Bầu trời', type: 'gradient', value: ['#d299c2', '#fef9d7'], preview: '#d299c2' },
 ];
-
-const ResizableDragDropCanvas: React.FC = () => {
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
+};
+const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
   const [draggedImages] = useState<DragImage[]>(DRAG_IMAGES);
   const [selectedItem, setSelectedItem] = useState<DroppedItem | null>(null);
   const [droppedItems, setDroppedItems] = useState<DroppedItem[]>([]);
@@ -71,7 +76,7 @@ const ResizableDragDropCanvas: React.FC = () => {
   const [showBackgroundPicker, setShowBackgroundPicker] = useState<boolean>(false);
   const [isResizing, setIsResizing] = useState<number | null>(null);
   const [resizeHandle, setResizeHandle] = useState<string>('');
-
+  
   // Animated shared values for canvas transform
   const translateX = useSharedValue<number>(0);
   const translateY = useSharedValue<number>(0);
@@ -392,7 +397,6 @@ const ResizableDragDropCanvas: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Workshop layout</Text>
 
       {/* Sidebar - Updated styles to remove disabled state in edit mode */}
       <View
@@ -472,9 +476,16 @@ const ResizableDragDropCanvas: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             )}
-            {selectedItem && (<TouchableOpacity style={styles.controlButton} onPress={resetCanvasTransform}>
-              <Text style={styles.controlButtonText}>{selectedItem?.label} Go floor</Text>
-            </TouchableOpacity>)}
+            {selectedItem && (
+  <TouchableOpacity
+    style={styles.controlButton}
+    onPress={() => navigation.navigate("Floor", { floor: selectedItem })}
+  >
+    <Text style={styles.controlButtonText}>
+      {selectedItem?.label} Go floor
+    </Text>
+  </TouchableOpacity>
+)}
             
 
             {isEditMode && (
@@ -664,13 +675,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
     padding: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
-    color: '#2d3748',
   },
   dragArea: {
     backgroundColor: 'white',
