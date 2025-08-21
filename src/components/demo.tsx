@@ -47,6 +47,7 @@ const DragDropZoomPanCanvas: React.FC = () => {
   const [itemScales, setItemScales] = useState<Record<number, number>>({});
   const [draggingDroppedItem, setDraggingDroppedItem] = useState<number | null>(null);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [currentItemIndex, setCurrentItemIndex] = useState<number>(0);
 
   // Animated shared values
   const translateX = useSharedValue<number>(0);
@@ -76,6 +77,59 @@ const DragDropZoomPanCanvas: React.FC = () => {
   const toggleEditMode = (): void => {
     setIsEditMode((prev) => !prev);
     setSelectedItem(null);
+    setCurrentItemIndex(0);
+  };
+
+  const navigateToNextItem = (): void => {
+  if (droppedItems.length === 0) return;
+  
+  const nextIndex = (currentItemIndex + 1) % droppedItems.length;
+  setCurrentItemIndex(nextIndex);
+  
+  const targetItem = droppedItems[nextIndex];
+  if (targetItem && dropZoneLayout) {
+    const canvasHeaderHeight = 60;
+    const padding = 16; 
+    
+
+    const visibleCanvasWidth = dropZoneLayout.width - (padding * 2);
+    const visibleCanvasHeight = dropZoneLayout.height - canvasHeaderHeight - (padding * 2);
+    
+    const centerX = visibleCanvasWidth / 2;
+    const centerY = visibleCanvasHeight / 2;
+    
+
+    const itemCenterX = targetItem.x + 35;
+    const itemCenterY = targetItem.y + 35;
+    
+    const targetTranslateX = centerX - itemCenterX;
+    const targetTranslateY = centerY - itemCenterY;
+    
+    translateX.value = withSpring(targetTranslateX, { damping: 20, stiffness: 100 });
+    translateY.value = withSpring(targetTranslateY, { damping: 20, stiffness: 100 });
+    scale.value = withSpring(1, { damping: 20, stiffness: 100 });
+    
+    panOffsetX.value = targetTranslateX;
+    panOffsetY.value = targetTranslateY;
+    scaleOffset.value = 1;
+  }
+};
+
+  const resetCanvasTransform = (): void => {
+    translateX.value = withSpring(0);
+    translateY.value = withSpring(0);
+    panOffsetX.value = 0;
+    panOffsetY.value = 0;
+    scale.value = withSpring(1);
+    scaleOffset.value = 1;
+    setCurrentItemIndex(0);
+  };
+
+  const clearAll = (): void => {
+    setDroppedItems([]);
+    setItemScales({});
+    setSelectedItem(null);
+    setCurrentItemIndex(0);
   };
 
   // Canvas pan gesture
@@ -189,21 +243,6 @@ const DragDropZoomPanCanvas: React.FC = () => {
     });
   };
 
-  const clearAll = (): void => {
-    setDroppedItems([]);
-    setItemScales({});
-    setSelectedItem(null);
-  };
-
-  const resetCanvasTransform = (): void => {
-    translateX.value = withSpring(0);
-    translateY.value = withSpring(0);
-    panOffsetX.value = 0;
-    panOffsetY.value = 0;
-    scale.value = withSpring(1);
-    scaleOffset.value = 1;
-  };
-
   const createDragAnimatedStyle = (index: number) =>
     useAnimatedStyle(() => ({
       transform: [
@@ -217,7 +256,7 @@ const DragDropZoomPanCanvas: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Kéo thả + Zoom/Pan Canvas (Edit Mode)</Text>
+      <Text style={styles.title}>Kéo thả + Zoom/Pan Canvas (Edit Mode + Navigation)</Text>
 
       <View style={styles.debugInfo}>
         <Text style={styles.debugText}>
@@ -225,7 +264,7 @@ const DragDropZoomPanCanvas: React.FC = () => {
           {translateY.value.toFixed(0)})
         </Text>
         <Text style={[styles.debugText, { marginTop: 4 }]}>
-          {isEditMode ? '✏️ Chế độ Edit: Chỉ kéo thả item trên canvas' : '🔧 Chế độ Normal: Zoom/Pan/Add items'}
+          {isEditMode ? '✏️ Chế độ Edit: Chỉ kéo thả item trên canvas' : '🔧 Chế độ Normal: Zoom/Pan/Add items + Navigation'}
         </Text>
       </View>
 
@@ -284,9 +323,16 @@ const DragDropZoomPanCanvas: React.FC = () => {
               {isEditMode ? '📝 Thoát Edit' : '✏️ Edit'}
             </Text>
             {!isEditMode && (
-              <Text style={styles.controlButton} onPress={resetCanvasTransform}>
-                🔄 Reset
-              </Text>
+              <>
+                <Text style={styles.controlButton} onPress={resetCanvasTransform}>
+                  🔄 Reset
+                </Text>
+                {droppedItems.length > 0 && (
+                  <Text style={styles.nextButton} onPress={navigateToNextItem}>
+                    ➡️ Next ({currentItemIndex + 1}/{droppedItems.length})
+                  </Text>
+                )}
+              </>
             )}
             {droppedItems.length > 0 && (
               <Text style={styles.clearButton} onPress={clearAll}>
@@ -341,7 +387,7 @@ const DragDropZoomPanCanvas: React.FC = () => {
                   </View>
                 )}
 
-                {droppedItems.map((item) => {
+                {droppedItems.map((item, itemIndex) => {
                   const droppedItemGesture = Gesture.Pan()
                     .enabled(isEditMode)
                     .onStart(() => {
@@ -375,6 +421,7 @@ const DragDropZoomPanCanvas: React.FC = () => {
                           },
                           isEditMode && selectedItem?.droppedId === item.droppedId && styles.selectedDroppedItem,
                           draggingDroppedItem === item.droppedId && { zIndex: 9999, elevation: 10 },
+                          !isEditMode && itemIndex === currentItemIndex && styles.currentNavigationItem,
                         ]}
                         onTouchEnd={() => isEditMode && setSelectedItem(item)}
                       >
@@ -387,6 +434,11 @@ const DragDropZoomPanCanvas: React.FC = () => {
                             <Text style={styles.editModeText}>✋</Text>
                           </View>
                         )}
+                        {!isEditMode && itemIndex === currentItemIndex && (
+                          <View style={styles.navigationIndicator}>
+                            <Text style={styles.navigationText}>🎯</Text>
+                          </View>
+                        )}
                       </Animated.View>
                     </GestureDetector>
                   );
@@ -397,7 +449,7 @@ const DragDropZoomPanCanvas: React.FC = () => {
                     <Text style={styles.emptyText}>
                       {isEditMode
                         ? '✏️ Chế độ Edit\n🖼️ Kéo thả ảnh đã thả để di chuyển\n📝 Thoát Edit để zoom/pan'
-                        : '🖼️ Kéo ảnh vào đây\n📌 Pinch để zoom\n✋ Pan để di chuyển\n👆 Tap ảnh để chọn/xóa\n➕➖ Chọn để phóng to/thu nhỏ'}
+                        : '🖼️ Kéo ảnh vào đây\n📌 Pinch để zoom\n✋ Pan để di chuyển\n➡️ Next để navigate qua từng ảnh\n👆 Edit để chỉnh sửa'}
                     </Text>
                   </View>
                 )}
@@ -409,6 +461,11 @@ const DragDropZoomPanCanvas: React.FC = () => {
         {droppedItems.length > 0 && (
           <Text style={styles.stats}>
             📊 {droppedItems.length} ảnh đã thả{isEditMode && ' - Chế độ Edit: Kéo để di chuyển'}
+            {!isEditMode && droppedItems.length > 0 && (
+              <Text style={styles.currentItemIndicator}>
+                {' | '}🎯 Đang xem: {droppedItems[currentItemIndex]?.label || 'N/A'}
+              </Text>
+            )}
           </Text>
         )}
       </View>
@@ -555,6 +612,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
+  nextButton: {
+    color: '#38a169',
+    fontSize: 14,
+    fontWeight: '600',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f0fff4',
+    borderWidth: 1,
+    borderColor: '#68d391',
+  },
   canvasContainer: {
     flex: 1,
     borderRadius: 12,
@@ -646,6 +714,27 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 8,
   },
+  navigationIndicator: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    backgroundColor: '#38a169',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navigationText: {
+    color: 'white',
+    fontSize: 8,
+  },
+  currentNavigationItem: {
+    borderWidth: 3,
+    borderColor: '#38a169',
+    shadowColor: '#38a169',
+    shadowOpacity: 0.5,
+  },
   emptyState: {
     position: 'absolute',
     top: '50%',
@@ -672,6 +761,10 @@ const styles = StyleSheet.create({
     borderColor: '#e53e3e',
     shadowColor: '#e53e3e',
     shadowOpacity: 0.5,
+  },
+  currentItemIndicator: {
+    color: '#38a169',
+    fontWeight: '600',
   },
 });
 
