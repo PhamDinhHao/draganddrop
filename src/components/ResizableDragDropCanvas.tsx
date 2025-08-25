@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, LayoutChangeEvent, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, LayoutChangeEvent, TouchableOpacity, Image } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -17,6 +17,8 @@ interface DragImage {
   id: number;
   color: string;
   label: string;
+  overviewImage: string;
+  detailImage: string;
 }
 
 interface DroppedItem extends DragImage {
@@ -43,10 +45,22 @@ interface BackgroundOption {
 }
 
 const DRAG_IMAGES: DragImage[] = [
-  { id: 1, color: '#FF6B6B', label: 'X4' },
-  { id: 2, color: '#4ECDC4', label: 'X5' },
-  { id: 3, color: '#45B7D1', label: 'X6' },
-  { id: 4, color: '#96CEB4', label: 'X7' },
+  {
+    id: 1, color: '#FF6B6B', label: 'X4', overviewImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Overview',
+    detailImage: 'https://hoanghamobile.com/tin-tuc/wp-content/uploads/2023/07/hinh-dep.jpg'
+  },
+  {
+    id: 2, color: '#4ECDC4', label: 'X5', overviewImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Overview',
+    detailImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Detail'
+  },
+  {
+    id: 3, color: '#45B7D1', label: 'X6', overviewImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Overview',
+    detailImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Detail'
+  },
+  {
+    id: 4, color: '#96CEB4', label: 'X7', overviewImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Overview',
+    detailImage: 'https://via.placeholder.com/100x100/45B7D1/FFFFFF?text=X6+Detail'
+  },
 ];
 
 const BACKGROUND_OPTIONS: BackgroundOption[] = [
@@ -76,8 +90,8 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
   const [showBackgroundPicker, setShowBackgroundPicker] = useState<boolean>(false);
   const [isResizing, setIsResizing] = useState<number | null>(null);
   const [resizeHandle, setResizeHandle] = useState<string>('');
-  
-  // Animated shared values for canvas transform
+  const [currentZoom, setCurrentZoom] = useState<number>(1);
+
   const translateX = useSharedValue<number>(0);
   const translateY = useSharedValue<number>(0);
   const panOffsetX = useSharedValue<number>(0);
@@ -85,12 +99,10 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
   const scale = useSharedValue<number>(1);
   const scaleOffset = useSharedValue<number>(1);
 
-  // Animated values for drag items
   const dragTranslationX = draggedImages.map(() => useSharedValue<number>(0));
   const dragTranslationY = draggedImages.map(() => useSharedValue<number>(0));
   const dragScale = draggedImages.map(() => useSharedValue<number>(1));
 
-  // Ref to store initial positions
   const itemStartPositions = useRef<Record<number, { x: number; y: number; width: number; height: number }>>({});
 
   const toggleEditMode = (): void => {
@@ -131,6 +143,7 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
       panOffsetX.value = targetTranslateX;
       panOffsetY.value = targetTranslateY;
       scaleOffset.value = 1;
+      runOnJS(setCurrentZoom)(1);
     }
   };
 
@@ -142,6 +155,7 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
     scale.value = withSpring(1);
     scaleOffset.value = 1;
     setCurrentItemIndex(-1);
+    setCurrentZoom(1);
   };
 
   const clearAll = (): void => {
@@ -153,7 +167,6 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
     setResizeHandle('');
   };
 
-  // Canvas pan gesture - Updated to work in edit mode when not interacting with items
   const canvasPanGesture = Gesture.Pan()
     .enabled(isDragging === -1 && !draggingDroppedItem && !showBackgroundPicker && !isResizing)
     .onUpdate((e) => {
@@ -165,11 +178,13 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
       panOffsetY.value = translateY.value;
     });
 
-  // Canvas pinch gesture - Updated to work in edit mode
   const canvasPinchGesture = Gesture.Pinch()
     .enabled(isDragging === -1 && !draggingDroppedItem && !showBackgroundPicker && !isResizing)
     .onUpdate((e) => {
-      scale.value = Math.max(0.5, Math.min(3, scaleOffset.value * e.scale));
+      const newScale = scaleOffset.value * e.scale;
+      scale.value = newScale;
+      // Cập nhật zoom level trong real-time
+      runOnJS(setCurrentZoom)(newScale);
     })
     .onEnd(() => {
       scaleOffset.value = scale.value;
@@ -185,7 +200,6 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
     ],
   }));
 
-  // Gesture for dragging items from sidebar - Updated to work in edit mode
   const createPanGesture = (index: number, isUsed: boolean) => {
     return Gesture.Pan()
       .enabled(isEditMode && !isUsed)
@@ -217,7 +231,7 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
             const canvasContainerY = draggedItemY - dropZoneLayout.y - canvasHeaderHeight;
             const actualCanvasX = (canvasContainerX - translateX.value) / scale.value;
             const actualCanvasY = (canvasContainerY - translateY.value) / scale.value;
-            const centeredX = actualCanvasX - 50; // Center the 100x100 square
+            const centeredX = actualCanvasX - 50;
             const centeredY = actualCanvasY - 50;
 
             runOnJS(handleDropSuccess)(index, centeredX, centeredY);
@@ -241,7 +255,7 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
       ...draggedItem,
       x: Math.max(0, Math.min(x, 1800)),
       y: Math.max(0, Math.min(y, 1800)),
-      width: 100, // Default square size
+      width: 100,
       height: 100,
       droppedId: Date.now() + index + Math.random(),
     };
@@ -255,8 +269,8 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
   const updateItemPosition = (droppedId: number, newX: number, newY: number): void => {
     setDroppedItems((prev) =>
       prev.map((item) =>
-        item.droppedId === droppedId 
-          ? { ...item, x: Math.max(0, newX), y: Math.max(0, newY) } 
+        item.droppedId === droppedId
+          ? { ...item, x: Math.max(0, newX), y: Math.max(0, newY) }
           : item
       )
     );
@@ -265,14 +279,14 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
   const updateItemSize = (droppedId: number, newWidth: number, newHeight: number, newX?: number, newY?: number): void => {
     setDroppedItems((prev) =>
       prev.map((item) =>
-        item.droppedId === droppedId 
-          ? { 
-              ...item, 
-              width: Math.max(50, newWidth),
-              height: Math.max(50, newHeight),
-              ...(newX !== undefined && { x: Math.max(0, newX) }),
-              ...(newY !== undefined && { y: Math.max(0, newY) }),
-            } 
+        item.droppedId === droppedId
+          ? {
+            ...item,
+            width: Math.max(50, newWidth),
+            height: Math.max(50, newHeight),
+            ...(newX !== undefined && { x: Math.max(0, newX) }),
+            ...(newY !== undefined && { y: Math.max(0, newY) }),
+          }
           : item
       )
     );
@@ -302,16 +316,15 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
       elevation: isDragging === index ? 10 : 4,
     }));
 
-  // Create resize gesture for handles
   const createResizeGesture = (item: DroppedItem, handle: string) => {
     return Gesture.Pan()
       .enabled(isEditMode && selectedItem?.droppedId === item.droppedId)
       .onStart(() => {
-        itemStartPositions.current[item.droppedId] = { 
-          x: item.x, 
-          y: item.y, 
-          width: item.width, 
-          height: item.height 
+        itemStartPositions.current[item.droppedId] = {
+          x: item.x,
+          y: item.y,
+          width: item.width,
+          height: item.height
         };
         runOnJS(setIsResizing)(item.droppedId);
         runOnJS(setResizeHandle)(handle);
@@ -329,23 +342,23 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
         let newHeight = startPos.height;
 
         switch (handle) {
-          case 'tl': // Top-left
+          case 'tl':
             newWidth = startPos.width - deltaX;
             newHeight = startPos.height - deltaY;
             newX = startPos.x + deltaX;
             newY = startPos.y + deltaY;
             break;
-          case 'tr': // Top-right
+          case 'tr':
             newWidth = startPos.width + deltaX;
             newHeight = startPos.height - deltaY;
             newY = startPos.y + deltaY;
             break;
-          case 'bl': // Bottom-left
+          case 'bl':
             newWidth = startPos.width - deltaX;
             newHeight = startPos.height + deltaY;
             newX = startPos.x + deltaX;
             break;
-          case 'br': // Bottom-right
+          case 'br':
             newWidth = startPos.width + deltaX;
             newHeight = startPos.height + deltaY;
             break;
@@ -360,16 +373,15 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
       });
   };
 
-  // Create move gesture for items
   const createMoveGesture = (item: DroppedItem) => {
     return Gesture.Pan()
       .enabled(isEditMode && !isResizing)
       .onStart(() => {
-        itemStartPositions.current[item.droppedId] = { 
-          x: item.x, 
-          y: item.y, 
-          width: item.width, 
-          height: item.height 
+        itemStartPositions.current[item.droppedId] = {
+          x: item.x,
+          y: item.y,
+          width: item.width,
+          height: item.height
         };
         runOnJS(setDraggingDroppedItem)(item.droppedId);
         runOnJS(setSelectedItem)(item);
@@ -468,7 +480,7 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity style={styles.controlButton} onPress={resetCanvasTransform}>
               <Text style={styles.controlButtonText}>🔄 Reset</Text>
             </TouchableOpacity>
-            
+
             {droppedItems.length > 0 && !isEditMode && (
               <TouchableOpacity style={styles.nextButton} onPress={navigateToNextItem} onLongPress={() => setCurrentItemIndex(-1)}>
                 <Text style={styles.nextButtonText}>
@@ -477,16 +489,16 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             )}
             {selectedItem && (
-  <TouchableOpacity
-    style={styles.controlButton}
-    onPress={() => navigation.navigate("Floor", { floor: selectedItem })}
-  >
-    <Text style={styles.controlButtonText}>
-      {selectedItem?.label} Go floor
-    </Text>
-  </TouchableOpacity>
-)}
-            
+              <TouchableOpacity
+                style={styles.controlButton}
+                onPress={() => navigation.navigate("Floor", { floor: selectedItem })}
+              >
+                <Text style={styles.controlButtonText}>
+                  {selectedItem?.label} Go floor
+                </Text>
+              </TouchableOpacity>
+            )}
+
 
             {isEditMode && (
               <>
@@ -553,9 +565,10 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
             <Animated.View style={[styles.canvas, canvasAnimatedStyle]}>
               <View style={[styles.canvasContent, getBackgroundStyle()]}>
                 <View style={styles.gridPattern} />
-                
+
                 {/* Dropped Items */}
                 {droppedItems.map((item, itemIndex) => (
+
                   <View key={item.droppedId}>
                     {/* Main Item */}
                     <GestureDetector gesture={createMoveGesture(item)}>
@@ -573,8 +586,15 @@ const ResizableDragDropCanvas: React.FC<Props> = ({ navigation }) => {
                           draggingDroppedItem === item.droppedId && { zIndex: 9999, elevation: 10 },
                           !isEditMode && itemIndex === currentItemIndex && styles.currentNavigationItem,
                         ]}
-                        onTouchEnd={() =>setSelectedItem(item)}
+                        onTouchEnd={() => setSelectedItem(item)}
                       >
+
+                          <Image
+                            source={{ uri: currentZoom >= 3 ? item.detailImage : item.overviewImage }}
+                            style={styles.itemImage}
+                            resizeMode="cover"
+                          />
+
                         <Text style={styles.droppedItemText}>{item.label}</Text>
                         <Text style={styles.sizeText}>
                           {Math.round(item.width)}×{Math.round(item.height)}
@@ -738,7 +758,7 @@ const styles = StyleSheet.create({
   dragItem: {
     width: 70,
     height: 70,
-    borderRadius: 8, // Square with rounded corners
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -930,7 +950,7 @@ const styles = StyleSheet.create({
   },
   droppedItem: {
     position: 'absolute',
-    borderRadius: 8, // Square with rounded corners
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -987,7 +1007,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  // Resize Handle Styles
   resizeHandle: {
     position: 'absolute',
     width: 16,
@@ -1012,6 +1031,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontStyle: 'italic',
+  },
+  itemImage: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
   },
 });
 
